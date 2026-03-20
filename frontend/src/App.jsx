@@ -94,6 +94,16 @@ function App() {
     loadHistory();
   }
 
+  async function handleReset() {
+    for (const v of voices) {
+      await fetch(`${API}/api/voices/${v.name}`, { method: "DELETE" });
+    }
+    setVoices([]);
+    setSelectedVoice("");
+    setResult(null);
+    setText(defaults[language]);
+  }
+
   function handleMainAction() {
     if (!hasVoice) {
       fileRef.current.click();
@@ -108,7 +118,12 @@ function App() {
         <h1>Claude Voice Studio</h1>
         <div className="header-right">
           {hasVoice && (
-            <span className="current-voice">{selectedVoice}</span>
+            <>
+              <span className="current-voice">{selectedVoice}</span>
+              <button className="btn-reset" onClick={handleReset}>
+                リセット
+              </button>
+            </>
           )}
           {status && (
             <span className={`badge ${status.status === "ready" ? "online" : "offline"}`}>

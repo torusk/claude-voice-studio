@@ -51,7 +51,7 @@ header h1 {
 .header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .current-voice {
@@ -60,6 +60,22 @@ header h1 {
   padding: 4px 10px;
   background: var(--surface2);
   border-radius: 6px;
+}
+
+.btn-reset {
+  font-size: 12px;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-reset:hover {
+  color: var(--red);
+  border-color: var(--red);
 }
 
 .badge {
@@ -91,13 +107,14 @@ header h1 {
 /* ===== Language Buttons ===== */
 .lang-select {
   display: flex;
-  gap: 0;
+  gap: 8px;
 }
 
 .lang-btn {
   flex: 1;
-  padding: 10px 0;
+  padding: 11px 0;
   border: 1px solid var(--border);
+  border-radius: var(--radius);
   background: var(--surface);
   color: var(--text-dim);
   cursor: pointer;
@@ -106,19 +123,8 @@ header h1 {
   transition: all 0.15s;
 }
 
-.lang-btn:first-child {
-  border-radius: var(--radius) 0 0 var(--radius);
-}
-
-.lang-btn:last-child {
-  border-radius: 0 var(--radius) var(--radius) 0;
-}
-
-.lang-btn:not(:first-child) {
-  border-left: none;
-}
-
 .lang-btn:hover {
+  border-color: var(--accent);
   color: var(--accent);
 }
 
@@ -126,10 +132,6 @@ header h1 {
   background: var(--accent);
   border-color: var(--accent);
   color: white;
-}
-
-.lang-btn.active + .lang-btn {
-  border-left-color: var(--accent);
 }
 
 /* ===== Text Input ===== */
