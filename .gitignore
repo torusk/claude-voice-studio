@@ -5,19 +5,16 @@ __pycache__/
 *.so
 .Python
 
-# 仮想環境 (uvで作られるもの)
+# 仮想環境
 .venv/
 uv.lock
 
 # Streamlit
 .streamlit/
 
-# 生成物やキャッシュ（モデルデータが巨大すぎるのでローカル管理推奨）
-*.wav
-*.mp3
-output_*.wav
-temp_*.wav
-cache/
+# 生成物
+outputs/
+voices/temp_*.wav
 
 # macOS
 .DS_Store

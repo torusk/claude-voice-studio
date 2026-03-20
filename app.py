@@ -1,181 +1,171 @@
 import streamlit as st
 from qwen_tts import Qwen3TTSModel
 import soundfile as sf
+import torch
 import os
 import time
+from pathlib import Path
+
+# --- 定数 ---
+VOICES_DIR = Path("voices")
+OUTPUTS_DIR = Path("outputs")
+VOICES_DIR.mkdir(exist_ok=True)
+OUTPUTS_DIR.mkdir(exist_ok=True)
 
 # --- ページ設定 ---
 st.set_page_config(
-    page_title="Qwen Voice Clone Studio",
+    page_title="Claude Voice Studio",
     page_icon="🎙️",
     layout="centered"
 )
 
-# --- CSSスタイルの定義（おしゃれなボタンとレイアウト用） ---
 st.markdown("""
 <style>
-    /* メインコンテナの幅を広げつつ中央寄せ */
-    .main .block-container {
-        max-width: 800px;
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-    }
-    
-    /* ステップ表示のスタイル */
-    .step-header {
-        font-size: 1.5rem;
-        font-weight: bold;
-        color: #1f77b4;
-        margin-bottom: 1rem;
-        border-bottom: 2px solid #e0e0e0;
-        padding-bottom: 0.5rem;
-    }
-
-    /* 録音中のアニメーション用 */
-    .recording-indicator {
-        color: #ff4b4b;
-        font-weight: bold;
-        font-size: 1.2rem;
-        animation: pulse 1.5s infinite;
-    }
-    @keyframes pulse {
-        0% { opacity: 1; }
-        50% { opacity: 0.5; }
-        100% { opacity: 1; }
-    }
-
-    /* ボタンを少し大きく、角丸に */
-    div.stButton > button:first-child {
-        border-radius: 20px;
-        height: 3em;
-        width: 100%;
-    }
+    .main .block-container { max-width: 850px; padding-top: 1.5rem; }
+    div.stButton > button:first-child { border-radius: 12px; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- セッション状態の初期化 ---
-if "step" not in st.session_state:
-    st.session_state.step = 1
-if "ref_audio_path" not in st.session_state:
-    st.session_state.ref_audio_path = None
+# --- デバイス検出 ---
+def get_device():
+    if torch.backends.mps.is_available():
+        return "mps"
+    elif torch.cuda.is_available():
+        return "cuda"
+    return "cpu"
 
 # --- モデルのロード ---
 @st.cache_resource
 def load_model():
-    return Qwen3TTSModel.from_pretrained(
-        "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
-    )
+    device = get_device()
+    st.toast(f"モデルをロード中... (device: {device})")
+    try:
+        model = Qwen3TTSModel.from_pretrained(
+            "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+            device_map=device
+        )
+    except Exception:
+        model = Qwen3TTSModel.from_pretrained(
+            "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+        )
+    return model
 
 model = load_model()
 
+# --- 保存済み音声の取得 ---
+def get_saved_voices():
+    voices = {}
+    for f in VOICES_DIR.glob("*.wav"):
+        voices[f.stem] = str(f)
+    return voices
+
 # --- ヘッダー ---
-st.title("🎙️ Qwen Voice Clone Studio")
-st.markdown("<center><sub>あなたの声で、日本語・中国語・英語を読み上げる</sub></center>", unsafe_allow_html=True)
+st.title("🎙️ Claude Voice Studio")
+st.caption("あなたの声で、日本語・中国語・英語を読み上げる")
 
-# ==============================================================================
-# ステップ 1: 参照音声の登録
-# ==============================================================================
-if st.session_state.step == 1:
-    st.markdown('<div class="step-header">Step 1: 基準となる声を登録</div>', unsafe_allow_html=True)
-    
-    # 入力方法の選択
-    input_method = st.radio("入力方法を選んでください", ["🎤 マイクで10秒録音", "📁 ファイルからアップロード"], horizontal=True)
+# === サイドバー: 音声設定 ===
+st.sidebar.header("参照音声")
 
-    # --- マイク録音の場合 ---
-    if input_method == "🎤 マイクで録音":
-        st.info("💡 ボタンを押して、10秒以内に好きなフレーズを喋ってください。")
-        
-        # JavaScriptで録音時間を制御するカスタムコンポーネント（簡易実装）
-        # Streamlit標準の audio_input は手動停止のみなので、タイマーを視覚的にサポートする
-        cols = st.columns([1, 2, 1])
-        with cols[1]:
-            # 録音実行
-            audio_bytes = st.audio_input("赤いボタンを押して録音スタート")
-            
-            if audio_bytes:
-                # ファイル保存
-                ref_audio_path = "temp_ref_audio.wav"
-                with open(ref_audio_path, "wb") as f:
-                    f.write(audio_bytes.getbuffer())
-                
-                st.session_state.ref_audio_path = ref_audio_path
-                st.success("✅ 録音完了！音声を解析しました...")
-                time.sleep(1) # 少し待たせて成功感を出す
-                st.session_state.step = 2
-                st.rerun()
+saved_voices = get_saved_voices()
+voice_options = ["マイクで録音", "ファイルをアップロード"]
+if saved_voices:
+    voice_options = list(saved_voices.keys()) + voice_options
 
-    # --- ファイルアップロードの場合 ---
-    else:
-        uploaded_file = st.file_uploader("音声ファイルを選択 (.wav, .mp3)", type=["wav", "mp3"])
-        if uploaded_file:
-            ref_audio_path = "temp_uploaded_audio.wav"
-            with open(ref_audio_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            
-            st.session_state.ref_audio_path = ref_audio_path
-            st.success("✅ ファイルを読み込みました！")
-            time.sleep(1)
-            st.session_state.step = 2
+voice_choice = st.sidebar.radio("声を選択", voice_options)
+
+ref_audio_path = None
+
+if voice_choice == "マイクで録音":
+    audio_bytes = st.sidebar.audio_input("録音してください")
+    if audio_bytes:
+        ref_audio_path = str(VOICES_DIR / "temp_recording.wav")
+        with open(ref_audio_path, "wb") as f:
+            f.write(audio_bytes.getbuffer())
+        # 保存オプション
+        save_name = st.sidebar.text_input("この声に名前をつけて保存（任意）")
+        if save_name and st.sidebar.button("保存"):
+            save_path = VOICES_DIR / f"{save_name}.wav"
+            with open(save_path, "wb") as f:
+                audio_bytes.seek(0)
+                f.write(audio_bytes.getbuffer())
+            st.sidebar.success(f"「{save_name}」として保存しました")
             st.rerun()
 
-# ==============================================================================
-# ステップ 2: テキスト入力 & 生成
-# ==============================================================================
-elif st.session_state.step == 2:
-    st.markdown('<div class="step-header">Step 2: テキストを入力して生成</div>', unsafe_allow_html=True)
-    
-    # 戻るボタン
-    if st.button("⬅️ 別の音声でやり直す"):
-        st.session_state.step = 1
-        st.session_state.ref_audio_path = None
-        st.rerun()
+elif voice_choice == "ファイルをアップロード":
+    uploaded_file = st.sidebar.file_uploader("音声ファイル (.wav, .mp3)", type=["wav", "mp3"])
+    if uploaded_file:
+        ref_audio_path = str(VOICES_DIR / "temp_upload.wav")
+        with open(ref_audio_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        save_name = st.sidebar.text_input("この声に名前をつけて保存（任意）")
+        if save_name and st.sidebar.button("保存"):
+            save_path = VOICES_DIR / f"{save_name}.wav"
+            with open(save_path, "wb") as f:
+                uploaded_file.seek(0)
+                f.write(uploaded_file.getbuffer())
+            st.sidebar.success(f"「{save_name}」として保存しました")
+            st.rerun()
 
-    st.info(f"🎵 現在の基準音声: `{os.path.basename(st.session_state.ref_audio_path)}`")
+else:
+    # 保存済み音声を選択
+    ref_audio_path = saved_voices[voice_choice]
+    st.sidebar.audio(ref_audio_path)
 
-        # 言語選択
-    language = st.selectbox("言語", ["Japanese", "Chinese", "English"]) # ここに English を追加
-    
-    # デフォルトテキスト設定
-    if language == "Japanese":
-        default_text = "こんにちは。今日も良い天気ですね。AI音声クオリティの進化に感謝します。"
-    elif language == "Chinese":
-        default_text = "你好，今天天气真好。感谢AI语音质量的进步。"
-    else: # English
-        default_text = "Hello, the weather is nice today. I appreciate the advancement of AI voice quality."
-        
-    text_input = st.text_area("読み上げるテキスト", default_text, height=150)
-    # 生成ボタン
-    if st.button("🔊 音声を生成する", type="primary", use_container_width=True):
-        if not text_input:
-            st.warning("テキストが入力されていません。")
-        else:
-            with st.spinner("生成中... 音声を作成しています（数十秒かかります）..."):
-                try:
-                    # エラー表示を抑制するため、st.errorを使わずにtry-catchで制御
-                    wavs, sr = model.generate_voice_clone(
-                        text=text_input,
-                        ref_audio=st.session_state.ref_audio_path,
-                        x_vector_only_mode=True,
-                        language=language
+# サイドバー下部に情報
+st.sidebar.divider()
+st.sidebar.caption(f"Device: {get_device()} | Model: Qwen3-TTS-1.7B")
+
+# === メイン: テキスト入力 & 生成 ===
+language = st.selectbox("言語", ["Japanese", "Chinese", "English"])
+
+defaults = {
+    "Japanese": "こんにちは。今日も良い天気ですね。AI音声クオリティの進化に感謝します。",
+    "Chinese": "你好，今天天气真好。感谢AI语音质量的进步。",
+    "English": "Hello, the weather is nice today. I appreciate the advancement of AI voice quality.",
+}
+text_input = st.text_area("読み上げるテキスト", defaults[language], height=150)
+
+# 生成ボタン
+if st.button("音声を生成", type="primary", use_container_width=True):
+    if not ref_audio_path:
+        st.warning("サイドバーから参照音声を設定してください。")
+    elif not text_input:
+        st.warning("テキストを入力してください。")
+    else:
+        start = time.time()
+        with st.spinner("生成中..."):
+            try:
+                wavs, sr = model.generate_voice_clone(
+                    text=text_input,
+                    ref_audio=ref_audio_path,
+                    x_vector_only_mode=True,
+                    language=language
+                )
+                elapsed = time.time() - start
+                timestamp = int(time.time())
+                output_filename = str(OUTPUTS_DIR / f"{language.lower()}_{timestamp}.wav")
+                sf.write(output_filename, wavs[0], sr)
+
+                st.success(f"生成完了 ({elapsed:.1f}秒)")
+                st.audio(output_filename)
+                with open(output_filename, "rb") as f:
+                    st.download_button(
+                        label="ダウンロード",
+                        data=f,
+                        file_name=os.path.basename(output_filename),
+                        mime="audio/wav",
+                        use_container_width=True
                     )
-                    
-                    output_filename = f"output_{language.lower()}.wav"
-                    sf.write(output_filename, wavs[0], sr)
-                    
-                    # --- 結果表示 ---
-                    st.markdown("### 🎉 生成完了！")
-                    st.audio(output_filename)
-                    
-                    with open(output_filename, "rb") as f:
-                        st.download_button(
-                            label="⬇️ 音声をダウンロード",
-                            data=f,
-                            file_name=output_filename,
-                            mime="audio/wav",
-                            use_container_width=True
-                        )
-                
-                except Exception as e:
-                    # ここでエラーをキャッチして、親切なメッセージだけ表示する
-                    # これにより画面上部の赤い「An error has occurred」が出るのを防ぐ効果がある
-                    st.error(f"生成中に問題が発生しました: {str(e)}")
+            except Exception as e:
+                st.error(f"生成に失敗しました: {e}")
+
+# === 生成履歴 ===
+output_files = sorted(OUTPUTS_DIR.glob("*.wav"), key=os.path.getmtime, reverse=True)
+if output_files:
+    with st.expander(f"生成履歴 ({len(output_files)}件)", expanded=False):
+        for f in output_files[:10]:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                st.audio(str(f))
+            with col2:
+                st.caption(f.stem)
