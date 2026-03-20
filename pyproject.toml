@@ -1,11 +1,13 @@
 [project]
-name = "qwen-glm-voice"
-version = "0.1.0"
-description = "Add your description here"
+name = "claude-voice-studio"
+version = "0.2.0"
+description = "AI Voice Clone Studio - Qwen3-TTS powered voice cloning"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "qwen-tts>=0.0.5",
     "soundfile>=0.13.1",
-    "streamlit>=1.53.1",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "python-multipart>=0.0.9",
 ]

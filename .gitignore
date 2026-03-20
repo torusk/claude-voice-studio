@@ -12,9 +12,16 @@ uv.lock
 # Streamlit
 .streamlit/
 
+# Node
+frontend/node_modules/
+
 # 生成物
 outputs/
 voices/temp_*.wav
+
+# 音声ファイル（個人データ）
+*.wav
+*.mp3
 
 # macOS
 .DS_Store
