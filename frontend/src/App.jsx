@@ -12,7 +12,6 @@ function App() {
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
   const [status, setStatus] = useState(null);
-  const [uploadName, setUploadName] = useState("");
   const fileRef = useRef(null);
 
   const defaults = {
@@ -21,6 +20,8 @@ function App() {
     English:
       "Hello, the weather is nice today. I appreciate the advancement of AI voice quality.",
   };
+
+  const hasVoice = voices.length > 0 && selectedVoice;
 
   useEffect(() => {
     fetch(`${API}/api/status`)
@@ -50,16 +51,18 @@ function App() {
       .then(setHistory);
   }
 
-  async function handleUpload() {
-    const file = fileRef.current?.files[0];
-    if (!file || !uploadName.trim()) return;
+  async function handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const name = file.name.replace(/\.(wav|mp3)$/i, "");
     const form = new FormData();
-    form.append("name", uploadName.trim());
+    form.append("name", name);
     form.append("file", file);
     await fetch(`${API}/api/voices/upload`, { method: "POST", body: form });
-    setUploadName("");
     fileRef.current.value = "";
-    loadVoices();
+    const updated = await fetch(`${API}/api/voices`).then((r) => r.json());
+    setVoices(updated);
+    setSelectedVoice(name);
   }
 
   async function handleGenerate() {
@@ -86,141 +89,114 @@ function App() {
     }
   }
 
-  async function handleDeleteVoice(name) {
-    await fetch(`${API}/api/voices/${name}`, { method: "DELETE" });
-    if (selectedVoice === name) setSelectedVoice("");
-    loadVoices();
-  }
-
   async function handleDeleteHistory(filename) {
     await fetch(`${API}/api/history/${filename}`, { method: "DELETE" });
     loadHistory();
+  }
+
+  function handleMainAction() {
+    if (!hasVoice) {
+      fileRef.current.click();
+    } else {
+      handleGenerate();
+    }
   }
 
   return (
     <div className="app">
       <header>
         <h1>Claude Voice Studio</h1>
-        <p className="subtitle">Powered by Qwen3-TTS + Vite 8</p>
-        {status && (
-          <span className={`badge ${status.status === "ready" ? "online" : "offline"}`}>
-            {status.status === "ready" ? `Ready (${status.device})` : "Offline"}
-          </span>
-        )}
+        <div className="header-right">
+          {hasVoice && (
+            <span className="current-voice">{selectedVoice}</span>
+          )}
+          {status && (
+            <span className={`badge ${status.status === "ready" ? "online" : "offline"}`}>
+              {status.device || "offline"}
+            </span>
+          )}
+        </div>
       </header>
 
-      <div className="layout">
-        <aside className="sidebar">
-          <h2>Voices</h2>
-          <div className="voice-list">
-            {voices.map((v) => (
-              <div
-                key={v.name}
-                className={`voice-item ${selectedVoice === v.name ? "active" : ""}`}
-                onClick={() => setSelectedVoice(v.name)}
+      <main className="main">
+        <div className="lang-select">
+          {["Japanese", "Chinese", "English"].map((l) => (
+            <button
+              key={l}
+              className={`lang-btn ${language === l ? "active" : ""}`}
+              onClick={() => setLanguage(l)}
+            >
+              {l === "Japanese" ? "日本語" : l === "Chinese" ? "中文" : "English"}
+            </button>
+          ))}
+        </div>
+
+        <textarea
+          className="text-input"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="読み上げるテキストを入力..."
+          rows={6}
+        />
+
+        <input
+          type="file"
+          accept=".wav,.mp3"
+          ref={fileRef}
+          onChange={handleFileSelect}
+          style={{ display: "none" }}
+        />
+
+        <button
+          className={`btn-main ${!hasVoice ? "register" : ""}`}
+          onClick={handleMainAction}
+          disabled={hasVoice && (generating || !text.trim())}
+        >
+          {!hasVoice
+            ? "音源を登録"
+            : generating
+              ? "生成中..."
+              : "音声を生成"}
+        </button>
+
+        {result && (
+          <div className="result">
+            <audio
+              src={`${API}/api/outputs/${result.filename}`}
+              controls
+              autoPlay
+            />
+            <div className="result-info">
+              <span>{result.elapsed}秒で生成</span>
+              <a
+                href={`${API}/api/outputs/${result.filename}`}
+                download={result.filename}
+                className="btn-download"
               >
-                <span>{v.name}</span>
+                ダウンロード
+              </a>
+            </div>
+          </div>
+        )}
+
+        {history.length > 0 && (
+          <div className="history">
+            <h3>履歴</h3>
+            {history.map((h) => (
+              <div key={h.filename} className="history-item">
+                <audio src={`${API}/api/outputs/${h.filename}`} controls />
+                <span className="history-name">{h.name}</span>
                 <button
                   className="btn-icon"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDeleteVoice(v.name);
-                  }}
-                  title="削除"
+                  onClick={() => handleDeleteHistory(h.filename)}
                 >
                   ×
                 </button>
               </div>
             ))}
-            {voices.length === 0 && (
-              <p className="muted">まだ声が登録されていません</p>
-            )}
           </div>
-
-          <div className="upload-section">
-            <h3>声を追加</h3>
-            <input type="file" accept=".wav,.mp3" ref={fileRef} />
-            <input
-              type="text"
-              placeholder="名前（例: 自分の声）"
-              value={uploadName}
-              onChange={(e) => setUploadName(e.target.value)}
-            />
-            <button className="btn-secondary" onClick={handleUpload}>
-              保存
-            </button>
-          </div>
-        </aside>
-
-        <main className="main">
-          <div className="lang-select">
-            {["Japanese", "Chinese", "English"].map((l) => (
-              <button
-                key={l}
-                className={`lang-btn ${language === l ? "active" : ""}`}
-                onClick={() => setLanguage(l)}
-              >
-                {l === "Japanese" ? "日本語" : l === "Chinese" ? "中文" : "English"}
-              </button>
-            ))}
-          </div>
-
-          <textarea
-            className="text-input"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder="読み上げるテキストを入力..."
-            rows={5}
-          />
-
-          <button
-            className="btn-generate"
-            onClick={handleGenerate}
-            disabled={generating || !selectedVoice || !text.trim()}
-          >
-            {generating ? "生成中..." : "音声を生成"}
-          </button>
-
-          {result && (
-            <div className="result">
-              <audio
-                src={`${API}/api/outputs/${result.filename}`}
-                controls
-                autoPlay
-              />
-              <div className="result-info">
-                <span>{result.elapsed}秒で生成</span>
-                <a
-                  href={`${API}/api/outputs/${result.filename}`}
-                  download={result.filename}
-                  className="btn-download"
-                >
-                  ダウンロード
-                </a>
-              </div>
-            </div>
-          )}
-
-          {history.length > 0 && (
-            <div className="history">
-              <h3>履歴</h3>
-              {history.map((h) => (
-                <div key={h.filename} className="history-item">
-                  <audio src={`${API}/api/outputs/${h.filename}`} controls />
-                  <span className="history-name">{h.name}</span>
-                  <button
-                    className="btn-icon"
-                    onClick={() => handleDeleteHistory(h.filename)}
-                    title="削除"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </main>
-      </div>
+        )}
+      </main>
 
       <footer>
         Built with Claude (Anthropic) / Vite 8 / Qwen3-TTS
